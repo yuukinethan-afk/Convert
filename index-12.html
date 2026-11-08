@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Image Vectorizer (CloudConvert)</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--text:#1d1d1f;--muted:#6e6e73;--accent:#0a84ff;--border:#d2d2d7}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#111;--card:#1c1c1e;--text:#f5f5f7;--muted:#98989d;--accent:#0a84ff;--border:#3a3a3c}
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);padding:14px}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:20px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ctrl{display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px}
+@media(min-width:600px){.ctrl{grid-template-columns:1fr 1fr}}
+button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+input[type=password],textarea{font:inherit;width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)}
+input[type=range]{width:100%;margin-top:6px}
+textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:90px}
+label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+label b{color:var(--text);font-weight:600}
+.chk{display:flex;gap:8px;align-items:center;color:var(--text);font-size:14px}
+.chk input{width:18px;height:18px}
+.drop{border:2px dashed var(--border);border-radius:12px;padding:22px;text-align:center}
+.drop.on{border-color:var(--accent)}
+.compare{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:700px){.compare{grid-template-columns:1fr 1fr}}
+.box{background:repeating-conic-gradient(#8882 0 25%,transparent 0 50%) 0 0/16px 16px;border-radius:8px;min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px}
+.box img{max-width:100%;max-height:420px;display:block}
+.muted{color:var(--muted);font-size:13px}
+.warn{color:#ff9f0a;font-size:13px}
+.err{color:#ff453a;font-size:13px}
+.title{font-size:13px;color:var(--muted);margin:0 0 6px}
+pre{white-space:pre-wrap;word-break:break-word;font-size:11px;max-height:260px;overflow:auto;background:var(--bg);border-radius:8px;padding:8px;margin:8px 0 0}
+details summary{cursor:pointer;font-size:14px}
+h2{font-size:15px;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Image Vectorizer (CloudConvert)</h1>
+
+  <div class="card">
+    <div class="drop" id="drop">
+      <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden>
+      <button class="ghost" id="pick">Pilih gambar</button>
+      <div class="muted" style="margin-top:8px">atau seret &amp; lepas PNG / JPG / WEBP ke sini</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Pengaturan CloudConvert</summary>
+      <div style="margin-top:10px">
+        <label for="code">Kode akses (kalau ACCESS_CODE diatur di Vercel)</label>
+        <input type="password" id="code" autocomplete="off">
+      </div>
+      <div style="margin-top:10px">
+        <label for="opts">Opsi tracing CloudConvert (JSON, boleh kosong). Lihat nama opsi yang valid lewat tombol "Lihat opsi".</label>
+        <textarea id="opts" placeholder='{}' spellcheck="false"></textarea>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="showOpts">Lihat opsi</button>
+      </div>
+      <pre id="optsOut" hidden></pre>
+    </details>
+    <div class="row" style="margin-top:14px">
+      <button id="go" disabled>Vektorisasi</button>
+      <button id="dl" class="ghost" disabled>Download SVG</button>
+      <button id="dlRaw" class="ghost" disabled>Download SVG asli</button>
+    </div>
+    <div id="status" class="muted" style="margin-top:10px">Pilih gambar dulu.</div>
+  </div>
+
+  <div class="card">
+    <h2>Rapikan hasil</h2>
+    <div class="muted" style="margin-top:4px">Dijalankan otomatis setelah CloudConvert selesai, tanpa memanggil API lagi. Tujuannya mengurangi jumlah shape supaya XML Alight Motion kecil.</div>
+    <div class="ctrl">
+      <div>
+        <label for="tk">Jumlah warna akhir: <b id="tkv"></b></label>
+        <input type="range" id="tk" min="2" max="32" step="1" value="16">
+      </div>
+      <div>
+        <label for="tmin">Buang objek kecil (% luas gambar): <b id="tminv"></b></label>
+        <input type="range" id="tmin" min="0" max="0.5" step="0.005" value="0.02">
+      </div>
+      <label class="chk"><input type="checkbox" id="trecolor" checked> Warnai ulang dari foto asli (pakai koordinat foto, memperbaiki warna yang hilang seperti kulit tangan)</label>
+      <label class="chk"><input type="checkbox" id="tmerge" checked> Gabung shape sewarna jadi satu path</label>
+      <label class="chk"><input type="checkbox" id="tstroke" checked> Hapus garis tepi (stroke)</label>
+      <label class="chk"><input type="checkbox" id="showRaw"> Tampilkan SVG asli CloudConvert di pratinjau</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="retidy" disabled>Rapikan ulang</button>
+    </div>
+  </div>
+
+  <div class="compare">
+    <div>
+      <p class="title">Original</p>
+      <div class="box" id="orig"><span class="muted">Belum ada gambar</span></div>
+    </div>
+    <div>
+      <p class="title">Vector (SVG)</p>
+      <div class="box" id="vec"><span class="muted">Belum divektorisasi</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- RAPIKAN START
+// Perapian SVG hasil tracing: kurangi warna, buang shape kecil, gabung shape sewarna.
+// Fungsi murni (tanpa DOM) supaya bisa dites di Node.
+
+function numRe(){ return /-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/g; }
+
+function parseAttrs(s){
+  const a = {};
+  const re = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m;
+  while((m = re.exec(s))) a[m[1]] = m[2] !== undefined ? m[2] : m[3];
+  if(a.style){
+    for(const part of a.style.split(';')){
+      const i = part.indexOf(':');
+      if(i > 0) a[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+    }
+  }
+  return a;
+}
+
+function parseColor(v){
+  if(!v) return null;
+  v = String(v).trim().toLowerCase();
+  if(v === 'black') return [0, 0, 0];
+  if(v === 'white') return [255, 255, 255];
+  let m = /^#([0-9a-f]{3})$/.exec(v);
+  if(m) return [...m[1]].map(c => parseInt(c + c, 16));
+  m = /^#([0-9a-f]{6})$/.exec(v);
+  if(m) return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+  m = /^rgb\(\s*([\d.]+%?)\s*,\s*([\d.]+%?)\s*,\s*([\d.]+%?)\s*\)$/.exec(v);
+  if(m) return [1, 2, 3].map(i => {
+    const t = m[i];
+    return Math.max(0, Math.min(255, Math.round(t.endsWith('%') ? parseFloat(t) * 2.55 : parseFloat(t))));
+  });
+  return null;
+}
+
+function hex(c){
+  return '#' + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+}
+
+function rgb2lab(r, g, b){
+  const f = v => { v /= 255; return v > 0.04045 ? Math.pow((v + 0.055) / 1.055, 2.4) : v / 12.92; };
+  const R = f(r), G = f(g), B = f(b);
+  const X = (R*0.4124 + G*0.3576 + B*0.1805) / 0.95047;
+  const Y = (R*0.2126 + G*0.7152 + B*0.0722);
+  const Z = (R*0.0193 + G*0.1192 + B*0.9505) / 1.08883;
+  const t = v => v > 0.008856 ? Math.cbrt(v) : 7.787*v + 16/116;
+  const fx = t(X), fy = t(Y), fz = t(Z);
+  return [116*fy - 16, 500*(fx - fy), 200*(fy - fz)];
+}
+
+// kotak pembatas path (titik kontrol ikut dihitung, jadi aman/konservatif),
+// plus: apakah punya lubang (subpath > 1) dan arah putaran subpath pertama (+1 / -1)
+function pathInfo(d){
+  const re = /([MmLlHhVvCcSsQqTtAaZz])|(-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)/g;
+  const arity = {M:2, L:2, T:2, H:1, V:1, C:6, S:4, Q:4, A:7, Z:0};
+  let x = 0, y = 0, sx = 0, sy = 0, sub = 0;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  const first = [];
+  const add = (px, py) => { if(px < x1) x1 = px; if(px > x2) x2 = px; if(py < y1) y1 = py; if(py > y2) y2 = py; };
+  let cmd = '', args = [], m;
+  const flush = () => {
+    if(!cmd) return;
+    const up = cmd.toUpperCase(), rel = cmd !== up, n = arity[up];
+    if(up === 'Z'){ x = sx; y = sy; return; }
+    for(let i = 0; i + n <= args.length; i += n){
+      const a = args.slice(i, i + n);
+      const ox = rel ? x : 0, oy = rel ? y : 0;
+      if(up === 'M' || up === 'L' || up === 'T'){
+        x = a[0] + ox; y = a[1] + oy; add(x, y);
+        if(up === 'M' && i === 0){ sx = x; sy = y; sub++; }
+      } else if(up === 'H'){ x = a[0] + ox; add(x, y); }
+      else if(up === 'V'){ y = a[0] + oy; add(x, y); }
+      else if(up === 'C'){ add(a[0] + ox, a[1] + oy); add(a[2] + ox, a[3] + oy); x = a[4] + ox; y = a[5] + oy; add(x, y); }
+      else if(up === 'S' || up === 'Q'){ add(a[0] + ox, a[1] + oy); x = a[2] + ox; y = a[3] + oy; add(x, y); }
+      else if(up === 'A'){ x = a[5] + ox; y = a[6] + oy; add(x - a[0], y - a[1]); add(x + a[0], y + a[1]); }
+      if(sub === 1) first.push([x, y]);
+    }
+  };
+  while((m = re.exec(d))){
+    if(m[1]){ flush(); cmd = m[1]; args = []; if(cmd === 'z' || cmd === 'Z'){ flush(); cmd = ''; } }
+    else args.push(parseFloat(m[2]));
+  }
+  flush();
+  if(x1 === Infinity) return null;
+  let area = 0;
+  for(let i = 0; i < first.length; i++){
+    const p = first[i], q = first[(i + 1) % first.length];
+    area += p[0] * q[1] - q[0] * p[1];
+  }
+  return {x1, y1, x2, y2, holes: sub > 1, sign: area >= 0 ? 1 : -1};
+}
+function pathBBox(d){
+  const r = pathInfo(d);
+  return r && {x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2};
+}
+
+function roundPath(d, dec){
+  return d.replace(numRe(), n => {
+    let s = String(+(+n).toFixed(dec));
+    if(s.startsWith('0.')) s = s.slice(1);
+    else if(s.startsWith('-0.')) s = '-' + s.slice(2);
+    return s;
+  });
+}
+
+// baca SVG sederhana: kembalikan null kalau ada elemen yang belum didukung
+function readSvg(text){
+  text = text.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<!DOCTYPE[^>]*>/gi, '');
+  const re = /<(\/?)([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+  const UNSUP = new Set(['defs','clippath','mask','lineargradient','radialgradient','pattern','image','style','text','use','symbol','filter','marker','foreignobject','switch','polyline','line']);
+  let m, rootAttrs = null;
+  const stack = [{tf: '', fill: '#000000', rule: 'nonzero', fop: '1', stroke: 'none'}];
+  const shapes = [];
+  while((m = re.exec(text))){
+    const close = m[1] === '/', name = m[2].toLowerCase(), selfClose = m[4] === '/';
+    if(name === 'svg'){ if(!close && rootAttrs === null) rootAttrs = m[3]; continue; }
+    if(UNSUP.has(name)) return null;
+    if(name === 'g'){
+      if(close){ if(stack.length > 1) stack.pop(); continue; }
+      const a = parseAttrs(m[3]), p = stack[stack.length - 1];
+      if(a.opacity && a.opacity !== '1') return null;
+      const st = {
+        tf: (p.tf + ' ' + (a.transform || '')).trim(),
+        fill: a.fill !== undefined ? a.fill : p.fill,
+        rule: a['fill-rule'] !== undefined ? a['fill-rule'] : p.rule,
+        fop: a['fill-opacity'] !== undefined ? a['fill-opacity'] : p.fop,
+        stroke: a.stroke !== undefined ? a.stroke : p.stroke,
+      };
+      if(!selfClose) stack.push(st);
+      continue;
+    }
+    if(close) continue;
+    const a = parseAttrs(m[3]), p = stack[stack.length - 1];
+    if(a.opacity && a.opacity !== '1') return null;
+    let d = null;
+    if(name === 'path') d = a.d;
+    else if(name === 'polygon'){
+      const n = (a.points || '').match(numRe()) || [];
+      if(n.length >= 6){ d = 'M' + n.slice(0, 2).join(' '); for(let i = 2; i + 1 < n.length; i += 2) d += 'L' + n[i] + ' ' + n[i+1]; d += 'Z'; }
+    } else if(name === 'rect'){
+      const x = +a.x || 0, y = +a.y || 0, w = +a.width, h = +a.height;
+      if(!(w > 0 && h > 0) || a.rx || a.ry) return null;
+      d = `M${x} ${y}h${w}v${h}h${-w}Z`;
+    } else if(name === 'circle' || name === 'ellipse'){
+      const cx = +a.cx || 0, cy = +a.cy || 0;
+      const rx = name === 'circle' ? +a.r : +a.rx, ry = name === 'circle' ? +a.r : +a.ry;
+      if(!(rx > 0 && ry > 0)) return null;
+      d = `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${2*rx} 0a${rx} ${ry} 0 1 0 ${-2*rx} 0Z`;
+    } else return null;
+    if(!d) continue;
+    const fillRaw = a.fill !== undefined ? a.fill : p.fill;
+    const stroke = a.stroke !== undefined ? a.stroke : p.stroke;
+    const shape = {
+      d,
+      fillRaw: String(fillRaw).trim().toLowerCase(),
+      stroke: String(stroke).trim().toLowerCase(),
+      rule: a['fill-rule'] !== undefined ? a['fill-rule'] : p.rule,
+      fop: a['fill-opacity'] !== undefined ? a['fill-opacity'] : p.fop,
+      tf: (p.tf + ' ' + (a.transform || '')).trim(),
+    };
+    shapes.push(shape);
+  }
+  if(rootAttrs === null) return null;
+  return {rootAttrs, shapes};
+}
+
+function boxArea(b){ return Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1); }
+function boxOverlap(a, b){ return a.x1 < b.x2 && a.x2 > b.x1 && a.y1 < b.y2 && a.y2 > b.y1; }
+
+function quantizeColors(shapes, K){
+  const map = new Map();
+  for(const s of shapes){
+    const k = s.rgb.join(',');
+    // bobot akar luas: area besar (abu-abu, putih) tidak lagi menelan warna kecil seperti kulit
+    const w = Math.sqrt(Math.max(1, boxArea(s.box)));
+    const e = map.get(k);
+    // rona (a,b) diperkuat 1.6x supaya merah muda pucat tidak dianggap sama dengan abu-abu
+    const L = rgb2lab(s.rgb[0], s.rgb[1], s.rgb[2]);
+    if(e) e.w += w; else map.set(k, {rgb: s.rgb, w, lab: [L[0], L[1] * 1.6, L[2] * 1.6]});
+  }
+  const items = [...map.values()];
+  if(items.length <= K) return;
+  const dist = (p, q) => (p[0]-q[0])**2 + (p[1]-q[1])**2 + (p[2]-q[2])**2;
+  // titik awal: warna terberat, lalu yang paling berbeda dari yang sudah dipilih
+  let first = 0;
+  for(let i = 1; i < items.length; i++) if(items[i].w > items[first].w) first = i;
+  const cent = [items[first].lab.slice()];
+  const md = new Float64Array(items.length).fill(Infinity);
+  while(cent.length < K){
+    const last = cent[cent.length - 1];
+    let far = -1, fd = -1;
+    for(let i = 0; i < items.length; i++){
+      const d = dist(items[i].lab, last);
+      if(d < md[i]) md[i] = d;
+      if(md[i] > fd){ fd = md[i]; far = i; }
+    }
+    if(fd <= 0) break;
+    cent.push(items[far].lab.slice());
+  }
+  const assign = new Int32Array(items.length);
+  for(let it = 0; it < 12; it++){
+    const sum = cent.map(() => [0, 0, 0, 0]);
+    for(let i = 0; i < items.length; i++){
+      let best = 0, bd = Infinity;
+      for(let c = 0; c < cent.length; c++){ const d = dist(items[i].lab, cent[c]); if(d < bd){ bd = d; best = c; } }
+      assign[i] = best;
+      const s = sum[best], w = items[i].w;
+      s[0] += items[i].lab[0] * w; s[1] += items[i].lab[1] * w; s[2] += items[i].lab[2] * w; s[3] += w;
+    }
+    for(let c = 0; c < cent.length; c++) if(sum[c][3]) cent[c] = [sum[c][0] / sum[c][3], sum[c][1] / sum[c][3], sum[c][2] / sum[c][3]];
+  }
+  // warna akhir = rata-rata RGB asli anggota (berbobot luas)
+  const acc = cent.map(() => [0, 0, 0, 0]);
+  items.forEach((it, i) => { const a = acc[assign[i]]; a[0] += it.rgb[0]*it.w; a[1] += it.rgb[1]*it.w; a[2] += it.rgb[2]*it.w; a[3] += it.w; });
+  const final = acc.map(a => a[3] ? [a[0]/a[3], a[1]/a[3], a[2]/a[3]] : [0, 0, 0]);
+  const to = new Map();
+  items.forEach((it, i) => to.set(it.rgb.join(','), final[assign[i]]));
+  for(const s of shapes) s.rgb = to.get(s.rgb.join(','));
+}
+
+// opts: {k, minPct, merge, stripStroke, dec}
+function rapikan(svgText, opts){
+  const o = Object.assign({k: 12, minPct: 0.02, merge: true, stripStroke: true, dec: 2}, opts || {});
+  const parsed = readSvg(svgText);
+  if(!parsed) return null;
+  const before = parsed.shapes.length;
+  let shapes = [];
+  for(const s of parsed.shapes){
+    if(s.fillRaw === 'none'){
+      if(o.stripStroke) continue;
+      return null;
+    }
+    if(s.stroke !== 'none' && !o.stripStroke) return null;
+    const rgb = parseColor(s.fillRaw);
+    if(!rgb) return null;
+    const info = pathInfo(s.d);
+    if(!info) continue;
+    const box = {x1: info.x1, y1: info.y1, x2: info.x2, y2: info.y2};
+    shapes.push({d: s.d, rgb, rule: s.rule, fop: s.fop, tf: s.tf, box, holes: info.holes, sign: info.sign});
+  }
+  // buang shape kecil (luas kotak < minPct % dari luas seluruh gambar pada transform yang sama)
+  if(o.minPct > 0){
+    const ref = new Map();
+    for(const s of shapes){
+      const r = ref.get(s.tf);
+      if(!r) ref.set(s.tf, {...s.box});
+      else { r.x1 = Math.min(r.x1, s.box.x1); r.y1 = Math.min(r.y1, s.box.y1); r.x2 = Math.max(r.x2, s.box.x2); r.y2 = Math.max(r.y2, s.box.y2); }
+    }
+    shapes = shapes.filter(s => boxArea(s.box) >= boxArea(ref.get(s.tf)) * o.minPct / 100);
+  }
+  quantizeColors(shapes, o.k);
+  const keyOf = s => hex(s.rgb) + '|' + s.rule + '|' + s.fop + '|' + s.tf + '|' + s.sign;
+  const overlaps = (a, b) => a.tf !== b.tf || boxOverlap(a.box, b.box);
+  const groups = [];
+  for(const s of shapes){
+    s.key = keyOf(s);
+    let target = null;
+    for(let gi = groups.length - 1; gi >= 0; gi--){
+      const g = groups[gi];
+      if(g.key === s.key){ target = g; break; }
+      if(!o.merge) break;
+      if(boxOverlap(g.ubox, s.box) || g.members.some(m => m.tf !== s.tf)){
+        if(g.members.some(m => overlaps(m, s))) break;
+      }
+    }
+    if(target && s.holes && target.members.some(m => boxOverlap(m.box, s.box))) target = null;
+    if(target){
+      target.members.push(s);
+      const u = target.ubox;
+      u.x1 = Math.min(u.x1, s.box.x1); u.y1 = Math.min(u.y1, s.box.y1); u.x2 = Math.max(u.x2, s.box.x2); u.y2 = Math.max(u.y2, s.box.y2);
+    } else groups.push({key: s.key, rgb: s.rgb, rule: s.rule, fop: s.fop, tf: s.tf, members: [s], ubox: {...s.box}});
+  }
+  let subpaths = 0;
+  const body = groups.map((g, i) => {
+    const d = g.members.map(m => {
+      let p = roundPath(m.d.trim(), o.dec);
+      subpaths += (p.match(/[Mm]/g) || []).length;
+      return /^m/.test(p) ? 'M0 0' + p : p;
+    }).join(' ');
+    const attrs = `fill="${hex(g.rgb)}"` + (g.rule === 'evenodd' ? ' fill-rule="evenodd"' : '') + (g.fop !== '1' ? ` fill-opacity="${g.fop}"` : '') + (g.tf ? ` transform="${g.tf}"` : '');
+    return `<g id="warna-${i + 1}"><path ${attrs} d="${d}"/></g>`;
+  });
+  let root = parsed.rootAttrs;
+  if(!/xmlns\s*=/.test(root)) root += ' xmlns="http://www.w3.org/2000/svg"';
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg${root}>\n${body.join('\n')}\n</svg>\n`;
+  return {svg, before, kept: shapes.length, groups: groups.length, subpaths};
+}
+// ---- RAPIKAN END
+
+// ---- RECOLOR START
+// Warnai ulang tiap shape SVG memakai warna asli foto di koordinat yang sama.
+// Tiap shape digambar dengan ID unik; piksel yang benar-benar terlihat (tidak tertutup shape lain) dirata-ratakan dari foto.
+function parseTf(str){
+  let m = new DOMMatrix();
+  const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g; let t;
+  while((t = re.exec(str || ''))){
+    const n = t[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    if(t[1] === 'matrix' && n.length === 6) m = m.multiply(new DOMMatrix(n));
+    else if(t[1] === 'translate') m = m.translate(n[0] || 0, n[1] || 0);
+    else if(t[1] === 'scale') m = m.scale(n[0], n.length > 1 ? n[1] : n[0]);
+    else if(t[1] === 'rotate') m = n.length === 3 ? m.translate(n[1], n[2]).rotate(n[0]).translate(-n[1], -n[2]) : m.rotate(n[0] || 0);
+    else if(t[1] === 'skewX') m = m.skewX(n[0] || 0);
+    else if(t[1] === 'skewY') m = m.skewY(n[0] || 0);
+  }
+  return m;
+}
+function recolorFromPhoto(svgText, img, maxDim){
+  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const root = doc.documentElement;
+  if(!root || root.nodeName.toLowerCase() !== 'svg' || doc.getElementsByTagName('parsererror').length) return null;
+  let vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if(vb.length !== 4 || vb.some(isNaN)) vb = [0, 0, parseFloat(root.getAttribute('width')) || img.width, parseFloat(root.getAttribute('height')) || img.height];
+  const k = Math.min(1, maxDim / Math.max(vb[2], vb[3]));
+  const W = Math.max(1, Math.round(vb[2] * k)), H = Math.max(1, Math.round(vb[3] * k));
+  const els = [...root.querySelectorAll('path,polygon,rect,circle,ellipse')].filter(e => (e.getAttribute('fill') || e.parentNode.getAttribute && e.parentNode.getAttribute('fill') || '') !== 'none');
+  if(!els.length || els.length > 16000000) return null;
+
+  const idc = document.createElement('canvas'); idc.width = W; idc.height = H;
+  const ictx = idc.getContext('2d', {willReadFrequently: true});
+  const base = new DOMMatrix([W / vb[2], 0, 0, H / vb[3], -vb[0] * W / vb[2], -vb[1] * H / vb[3]]);
+  els.forEach((e, i) => {
+    let m = base; const chain = [];
+    for(let n = e; n && n !== root; n = n.parentNode) chain.unshift(n);
+    for(const n of chain) if(n.getAttribute && n.getAttribute('transform')) m = m.multiply(parseTf(n.getAttribute('transform')));
+    const nm = e.nodeName.toLowerCase(); let p;
+    const num = a => parseFloat(e.getAttribute(a)) || 0;
+    if(nm === 'path') p = new Path2D(e.getAttribute('d') || '');
+    else if(nm === 'polygon'){
+      const n = (e.getAttribute('points') || '').match(/-?[\d.]+(?:e-?\d+)?/gi) || [];
+      p = new Path2D(); for(let j = 0; j + 1 < n.length; j += 2) j ? p.lineTo(+n[j], +n[j+1]) : p.moveTo(+n[j], +n[j+1]); p.closePath();
+    } else if(nm === 'rect'){ p = new Path2D(); p.rect(num('x'), num('y'), num('width'), num('height')); }
+    else { p = new Path2D(); const rx = nm === 'circle' ? num('r') : num('rx'), ry = nm === 'circle' ? num('r') : num('ry'); p.ellipse(num('cx'), num('cy'), rx, ry, 0, 0, Math.PI * 2); }
+    ictx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+    const id = i + 1;
+    ictx.fillStyle = `rgb(${(id >> 16) & 255},${(id >> 8) & 255},${id & 255})`;
+    const rule = e.getAttribute('fill-rule') || (e.parentNode.getAttribute && e.parentNode.getAttribute('fill-rule')) || 'nonzero';
+    ictx.fill(p, rule === 'evenodd' ? 'evenodd' : 'nonzero');
+  });
+  const ids = ictx.getImageData(0, 0, W, H).data;
+
+  const pc = document.createElement('canvas'); pc.width = W; pc.height = H;
+  const pctx = pc.getContext('2d', {willReadFrequently: true});
+  pctx.imageSmoothingQuality = 'high'; pctx.drawImage(img, 0, 0, W, H);
+  const ph = pctx.getImageData(0, 0, W, H).data;
+
+  const n = els.length;
+  const sum = new Float64Array(n * 3), cnt = new Uint32Array(n);
+  const sumA = new Float64Array(n * 3), cntA = new Uint32Array(n);
+  const idAt = i => ids[i*4+3] === 255 ? (ids[i*4] << 16) | (ids[i*4+1] << 8) | ids[i*4+2] : 0;
+  for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+    const i = y * W + x, id = idAt(i);
+    if(!id || id > n || ph[i*4+3] < 128) continue;
+    const j = id - 1;
+    sumA[j*3] += ph[i*4]; sumA[j*3+1] += ph[i*4+1]; sumA[j*3+2] += ph[i*4+2]; cntA[j]++;
+    if(x > 0 && y > 0 && x < W-1 && y < H-1 && idAt(i-1) === id && idAt(i+1) === id && idAt(i-W) === id && idAt(i+W) === id){
+      sum[j*3] += ph[i*4]; sum[j*3+1] += ph[i*4+1]; sum[j*3+2] += ph[i*4+2]; cnt[j]++;
+    }
+  }
+  let changed = 0;
+  els.forEach((e, j) => {
+    let s = sum, c = cnt[j];
+    if(!c){ s = sumA; c = cntA[j]; }
+    if(!c) return;
+    const h = v => Math.round(v / c).toString(16).padStart(2, '0');
+    e.setAttribute('fill', '#' + h(s[j*3]) + h(s[j*3+1]) + h(s[j*3+2]));
+    e.removeAttribute('style'); changed++;
+  });
+  return {svg: new XMLSerializer().serializeToString(doc), changed, total: n};
+}
+// ---- RECOLOR END
+
+
+const $ = id => document.getElementById(id);
+let srcImg = null, svgText = '', rawSvg = '', baseName = 'hasil', busy = false, vecUrl = '';
+const MAX_DIM = 2000;
+const MAX_B64 = 4000000; // batas body Vercel 4,5 MB
+
+function setStatus(t, cls){ const s = $('status'); s.textContent = t; s.className = cls || 'muted'; }
+function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function sizeText(str){
+  const kb = new Blob([str]).size / 1024;
+  return kb >= 1024 ? (kb / 1024).toFixed(2) + ' MB' : kb.toFixed(0) + ' KB';
+}
+
+$('code').value = lsGet('vec_code');
+$('opts').value = lsGet('vec_opts');
+$('code').addEventListener('input', ()=> lsSet('vec_code', $('code').value));
+$('opts').addEventListener('input', ()=> lsSet('vec_opts', $('opts').value));
+
+for(const id of ['tk', 'tmin']){
+  const upd = ()=> { $(id + 'v').textContent = $(id).value; };
+  $(id).addEventListener('input', upd); upd();
+}
+
+$('pick').addEventListener('click', ()=> $('file').click());
+$('file').addEventListener('change', e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); });
+const drop = $('drop');
+drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('on'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('on'));
+drop.addEventListener('drop', e=>{
+  e.preventDefault(); drop.classList.remove('on');
+  if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+function loadFile(f){
+  if(!f.type.startsWith('image/')){ setStatus('File bukan gambar.', 'err'); return; }
+  baseName = f.name.replace(/\.[^.]+$/, '') || 'hasil';
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = ()=>{
+    srcImg = img;
+    $('orig').innerHTML = '';
+    const p = new Image(); p.src = url; $('orig').appendChild(p);
+    $('vec').innerHTML = '<span class="muted">Belum divektorisasi</span>';
+    svgText = ''; rawSvg = '';
+    $('dl').disabled = true; $('dlRaw').disabled = true; $('retidy').disabled = true;
+    $('go').disabled = false;
+    setStatus(`Gambar ${img.width}×${img.height}px siap. Tekan Vektorisasi.`);
+  };
+  img.onerror = ()=> setStatus('Gagal membuka gambar.', 'err');
+  img.src = url;
+}
+
+// Kecilkan gambar dan ubah ke PNG base64 yang muat di batas body Vercel
+function toBase64Png(img){
+  let scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+  for(let i = 0; i < 8; i++){
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+    const b64 = cv.toDataURL('image/png').split(',')[1];
+    if(b64.length <= MAX_B64) return {b64, w, h};
+    scale *= 0.8;
+  }
+  throw new Error('Gambar terlalu besar untuk dikirim.');
+}
+
+function headers(){
+  const h = {'Content-Type': 'application/json'};
+  const c = $('code').value.trim();
+  if(c) h['x-access-code'] = c;
+  return h;
+}
+
+async function callJson(url, init){
+  const r = await fetch(url, init);
+  const t = await r.text();
+  let j; try { j = JSON.parse(t); } catch(e){ j = null; }
+  if(!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status + ' ' + t.slice(0, 120)));
+  return j;
+}
+
+// tampilkan lewat <img> supaya script di dalam SVG tidak bisa jalan
+function render(svg, note, noteCls){
+  svgText = svg;
+  if(vecUrl) URL.revokeObjectURL(vecUrl);
+  vecUrl = URL.createObjectURL(new Blob([svg], {type:'image/svg+xml'}));
+  $('vec').innerHTML = '';
+  const im = new Image(); im.src = vecUrl; $('vec').appendChild(im);
+  let cls = noteCls || 'muted';
+  let msg = note;
+  if(/<image[\s>]/i.test(svg)){ msg += ' Peringatan: SVG berisi gambar raster, bukan vektor murni.'; cls = 'warn'; }
+  else if(new Blob([svg]).size > 2 * 1048576){ msg += ' Ukuran melebihi 2 MB.'; cls = 'warn'; }
+  setStatus(msg, cls);
+  $('dl').disabled = false;
+}
+
+function applyTidy(){
+  if(!rawSvg) return;
+  const rawInfo = `${sizeText(rawSvg)}`;
+  let res = null, src = rawSvg, rc = '';
+  if($('trecolor').checked && srcImg){
+    try {
+      const r = recolorFromPhoto(rawSvg, srcImg, MAX_DIM);
+      if(r){ src = r.svg; rc = ` Warna ${r.changed}/${r.total} shape diambil ulang dari foto.`; }
+    } catch(e){ console.error(e); }
+  }
+  try {
+    res = rapikan(src, {k: +$('tk').value, minPct: +$('tmin').value, merge: $('tmerge').checked, stripStroke: $('tstroke').checked});
+  } catch(e){ console.error(e); }
+  if(!res){
+    render(rawSvg, `SVG ${rawInfo}. Berisi elemen yang belum bisa dirapikan (gradasi, clip, dll), jadi ditampilkan apa adanya.`, 'warn');
+    return;
+  }
+  render(res.svg, `Sebelum: ${res.before} shape (${rawInfo}). Sesudah: ${res.groups} grup, ${res.subpaths} subpath (${sizeText(res.svg)}). ${res.before - res.kept} shape kecil dibuang.${rc}`);
+}
+$('retidy').addEventListener('click', applyTidy);
+$('showRaw').addEventListener('change', ()=>{
+  if(!rawSvg) return;
+  const src = $('showRaw').checked ? rawSvg : svgText;
+  if(vecUrl) URL.revokeObjectURL(vecUrl);
+  vecUrl = URL.createObjectURL(new Blob([src], {type:'image/svg+xml'}));
+  $('vec').innerHTML = '';
+  const im = new Image(); im.src = vecUrl; $('vec').appendChild(im);
+});
+
+$('go').addEventListener('click', async ()=>{
+  if(!srcImg || busy) return;
+  let options = {};
+  const raw = $('opts').value.trim();
+  if(raw){
+    try { options = JSON.parse(raw); } catch(e){ setStatus('Opsi bukan JSON yang valid.', 'err'); return; }
+  }
+  busy = true; $('go').disabled = true; $('dl').disabled = true;
+  try {
+    setStatus('Menyiapkan gambar…');
+    const {b64, w, h} = toBase64Png(srcImg);
+    setStatus(`Mengirim ke CloudConvert (${w}×${h}px)… ini bisa memakan waktu beberapa detik.`);
+    const j = await callJson('/api/convert', {method:'POST', headers: headers(), body: JSON.stringify({image: b64, options})});
+    const svg = j.svg;
+    if(!/<svg[\s>]/i.test(svg)) throw new Error('Hasil bukan SVG yang valid.');
+    rawSvg = svg;
+    $('dlRaw').disabled = false; $('retidy').disabled = false;
+    applyTidy();
+  } catch(e){
+    console.error(e);
+    setStatus('Gagal: ' + e.message, 'err');
+  }
+  busy = false; $('go').disabled = false;
+});
+
+$('showOpts').addEventListener('click', async ()=>{
+  const out = $('optsOut');
+  out.hidden = false; out.textContent = 'Memuat…';
+  try {
+    const j = await callJson('/api/options', {headers: headers()});
+    out.textContent = JSON.stringify(j, null, 2);
+  } catch(e){ out.textContent = 'Gagal: ' + e.message; }
+});
+
+function saveSvg(text, name){
+  const url = URL.createObjectURL(new Blob([text], {type:'image/svg+xml'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+}
+$('dl').addEventListener('click', ()=>{ if(svgText) saveSvg(svgText, baseName + '.svg'); });
+$('dlRaw').addEventListener('click', ()=>{ if(rawSvg) saveSvg(rawSvg, baseName + '-asli.svg'); });
+</script>
+</body>
+</html>
